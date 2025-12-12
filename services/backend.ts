@@ -358,6 +358,12 @@ export const adminService = {
         tiktok_pixel_id: ''
       };
 
+      if (error) {
+        console.warn("Settings table might be missing:", error.message);
+        // Return default empty settings so the app doesn't crash on boot
+        return settings;
+      }
+
       if (data) {
         data.forEach((row: any) => {
           if (row.key === 'facebook_pixel_id') settings.facebook_pixel_id = row.value;

@@ -106,7 +106,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
           await adminService.updateSetting(key, value);
           setSettings(prev => ({ ...prev, [key]: value }));
       } catch (e: any) {
-          alert(`Failed to save settings: ${e.message}`);
+          console.error(e);
+          const msg = e.message || '';
+          if (msg.includes('relation') && msg.includes('does not exist') || msg.includes('schema cache')) {
+              alert("Error: The 'settings' table does not exist in your database.\n\nPlease go to the 'System Setup' tab in this Admin Panel and run the SQL script to create it.");
+          } else {
+              alert(`Failed to save settings: ${msg}`);
+          }
       }
   };
 
@@ -199,7 +205,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
                                 <p className="text-sm text-red-700">
                                     {errorMsg}
                                 </p>
-                                {errorMsg.includes('relationship') || errorMsg.includes('policy') || errorMsg.includes('column') ? (
+                                {errorMsg.includes('relationship') || errorMsg.includes('policy') || errorMsg.includes('column') || errorMsg.includes('schema') ? (
                                     <p className="text-xs text-red-600 mt-1">
                                         👉 The database structure is incomplete. Go to <strong>System Setup</strong> and run the updated script.
                                     </p>
@@ -461,8 +467,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
                                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                                     <h3 className="font-bold text-xl text-gray-900 mb-4">Complete Database Setup</h3>
                                     <p className="text-gray-600 mb-6">
-                                        Run this script in the <strong>Supabase SQL Editor</strong>. <br/>
-                                        It creates tables for Plans, Settings, and updates Admin permissions.
+                                        Run this script in the <strong>Supabase SQL Editor</strong> to initialize all tables.
                                     </p>
                                     
                                     <div className="bg-slate-900 rounded-xl p-4 overflow-x-auto mb-6 relative group">
