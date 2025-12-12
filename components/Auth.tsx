@@ -25,8 +25,26 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, onNavigateBack, initialMode
 
     try {
         if(isLogin) {
-            const user = await authService.login(email, password);
-            onLoginSuccess(user.email, user.name);
+            try {
+                const user = await authService.login(email, password);
+                onLoginSuccess(user.email, user.name);
+            } catch (loginError: any) {
+                // SPECIAL HANDLER: Auto-create Admin if it doesn't exist and login fails
+                if (email === 'admin@selfiepro.com' && (loginError.message.includes('Invalid login credentials') || loginError.message.includes('Email not confirmed'))) {
+                    try {
+                        console.log("Admin account not found. Auto-creating...");
+                        // Create the admin user with default profile data
+                        const user = await authService.signup(email, password, 'Super Admin', 'Headquarters');
+                        onLoginSuccess(user.email, user.name);
+                        return;
+                    } catch (signupError: any) {
+                        // If signup also fails, throw the original login error
+                        console.error("Admin auto-creation failed", signupError);
+                        throw new Error(loginError.message);
+                    }
+                }
+                throw loginError;
+            }
         } else {
             if (!name || !country) {
                 throw new Error("Please fill in all fields");

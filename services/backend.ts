@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { User, Generation, Transaction } from '../types';
+import { User, Generation, Transaction, UserProfile } from '../types';
 
 export const authService = {
   signup: async (email: string, password: string, name: string, country: string): Promise<User> => {
@@ -30,6 +30,7 @@ export const authService = {
     }
 
     return {
+      id: authData.user.id,
       name,
       email,
       isLoggedIn: true,
@@ -56,6 +57,7 @@ export const authService = {
     if (profileError) throw profileError;
 
     return {
+      id: data.user.id,
       name: profile.full_name,
       email: data.user.email || '',
       isLoggedIn: true,
@@ -80,6 +82,7 @@ export const authService = {
     if (!profile) return null;
 
     return {
+      id: session.user.id,
       name: profile.full_name,
       email: session.user.email || '',
       isLoggedIn: true,
@@ -241,10 +244,14 @@ export const dbService = {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return [];
 
+    // Filter logic: Only show images from the last 24 hours
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
     const { data, error } = await supabase
       .from('generations')
       .select('*')
       .eq('user_id', user.id)
+      .gt('created_at', twentyFourHoursAgo) // Apply 24h filter
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -252,5 +259,52 @@ export const dbService = {
         return [];
     }
     return data;
+  },
+
+  cleanupHistory: async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    
+    // Clean up old records from DB
+    await supabase
+        .from('generations')
+        .delete()
+        .eq('user_id', user.id)
+        .lt('created_at', twentyFourHoursAgo);
   }
+};
+
+export const adminService = {
+    // Note: These queries will only work if RLS Policies on Supabase allow the 'admin' user to read all rows
+    getAllUsers: async (): Promise<UserProfile[]> => {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        return data as UserProfile[];
+    },
+
+    getAllTransactions: async (): Promise<Transaction[]> => {
+        const { data, error } = await supabase
+            .from('transactions')
+            .select('*, profiles(full_name)')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        // Flatten the joined profile name if needed, but for now return as is
+        return data as unknown as Transaction[];
+    },
+
+    updateUserCredits: async (userId: string, newCredits: number) => {
+        const { error } = await supabase
+            .from('profiles')
+            .update({ credits: newCredits })
+            .eq('id', userId);
+        
+        if (error) throw error;
+    }
 };

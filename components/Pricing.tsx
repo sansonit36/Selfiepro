@@ -3,17 +3,12 @@ import Button from './Button';
 import { Plan } from '../types';
 
 interface PricingProps {
+  plans: Plan[];
   onSelectPlan: (plan: Plan) => void;
   onCancel: () => void;
 }
 
-export const PLANS: Plan[] = [
-  { id: 'basic', name: 'Starter', price: 599, credits: 5 },
-  { id: 'standard', name: 'Popular', price: 699, credits: 12 },
-  { id: 'pro', name: 'Pro', price: 999, credits: 20 },
-];
-
-const Pricing: React.FC<PricingProps> = ({ onSelectPlan, onCancel }) => {
+const Pricing: React.FC<PricingProps> = ({ plans, onSelectPlan, onCancel }) => {
   return (
     <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
        <div className="max-w-7xl mx-auto">
@@ -23,7 +18,7 @@ const Pricing: React.FC<PricingProps> = ({ onSelectPlan, onCancel }) => {
          </div>
 
          <div className="grid gap-8 lg:grid-cols-3 lg:gap-x-8">
-            {PLANS.map((plan) => (
+            {plans.map((plan) => (
                 <div key={plan.id} className={`relative p-8 bg-white border rounded-2xl shadow-sm flex flex-col ${plan.id === 'standard' ? 'border-indigo-500 ring-2 ring-indigo-500' : 'border-gray-200'}`}>
                     {plan.id === 'standard' && (
                         <div className="absolute top-0 right-0 -mt-2 -mr-2 px-3 py-1 bg-indigo-500 text-white text-xs font-bold rounded-full">

@@ -49,6 +49,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onBuyCredits, onLogout, onC
   // Load history on mount
   useEffect(() => {
     loadHistory();
+    // Background cleanup for old images
+    dbService.cleanupHistory().catch(err => console.error("Cleanup warning:", err));
   }, []);
 
   const loadHistory = async () => {
@@ -162,13 +164,26 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onBuyCredits, onLogout, onC
     }
   };
 
-  const handleDownload = (imageUrl: string, template: string) => {
-    const link = document.createElement('a');
-    link.href = imageUrl;
-    link.download = `selfie-pro-${template.toLowerCase().replace(/\s/g, '-')}-${Date.now()}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleDownload = async (imageUrl: string, template: string) => {
+    try {
+        // Fetch the image as a blob to force download and avoid browser navigation
+        const response = await fetch(imageUrl);
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `selfie-pro-${template.toLowerCase().replace(/\s/g, '-')}-${Date.now()}.png`;
+        document.body.appendChild(link);
+        link.click();
+        
+        // Cleanup
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error("Download failed, opening in new tab", error);
+        window.open(imageUrl, '_blank');
+    }
   };
 
   return (
@@ -329,10 +344,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onBuyCredits, onLogout, onC
 
         {/* Gallery Section */}
         <div className="mt-20">
-            <h3 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-                <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                Your Gallery
-            </h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
+                <h3 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                    <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    Your Gallery
+                </h3>
+                <span className="text-xs text-amber-600 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-100 font-medium flex items-center gap-1.5 w-fit mt-2 sm:mt-0">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    Images auto-delete after 24 hours
+                </span>
+            </div>
             
             {loadingHistory ? (
                 <div className="flex gap-4">

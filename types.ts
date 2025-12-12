@@ -1,3 +1,4 @@
+
 export interface UploadedImage {
   id: string;
   file: File;
@@ -27,10 +28,18 @@ export type SceneTemplate =
   | 'Concert Backstage';
 
 export interface User {
+  id?: string; // Added optional ID for admin mapping
   name: string;
   email: string;
   isLoggedIn: boolean;
   credits: number;
+}
+
+export interface UserProfile extends User {
+  id: string;
+  full_name: string;
+  created_at: string;
+  country: string;
 }
 
 export interface Plan {
@@ -60,4 +69,5 @@ export interface Transaction {
   amount: number;
   created_at: string;
   sender_name: string;
+  user_id?: string; // Optional for admin view
 }

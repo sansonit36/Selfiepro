@@ -5,20 +5,31 @@ import Dashboard from './components/Dashboard';
 import Pricing from './components/Pricing';
 import Payment from './components/Payment';
 import ThankYou from './components/ThankYou';
+import AdminPanel from './components/AdminPanel';
 import { User, Plan } from './types';
 import { VerificationResult } from './services/geminiService';
 import { authService, dbService } from './services/backend';
 
-type View = 'landing' | 'auth' | 'dashboard' | 'pricing' | 'payment' | 'thankyou';
+type View = 'landing' | 'auth' | 'dashboard' | 'pricing' | 'payment' | 'thankyou' | 'admin';
+
+const INITIAL_PLANS: Plan[] = [
+  { id: 'basic', name: 'Starter', price: 599, credits: 5 },
+  { id: 'standard', name: 'Popular', price: 699, credits: 12 },
+  { id: 'pro', name: 'Pro', price: 999, credits: 20 },
+];
+
+const ADMIN_EMAIL = 'admin@selfiepro.com';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>('landing');
   const [authInitialMode, setAuthInitialMode] = useState<'login' | 'signup'>('login');
   
-  // Auth state is now nullable to represent "loading" state
+  // Auth state
   const [user, setUser] = useState<User | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
 
+  // App Config State (lifted for Admin editing)
+  const [plans, setPlans] = useState<Plan[]>(INITIAL_PLANS);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
   const [lastPurchasedCredits, setLastPurchasedCredits] = useState(0);
 
@@ -29,7 +40,13 @@ const App: React.FC = () => {
             const sessionUser = await authService.getCurrentSession();
             if (sessionUser) {
                 setUser(sessionUser);
-                if (currentView === 'landing') setCurrentView('dashboard');
+                if (currentView === 'landing') {
+                    if (sessionUser.email === ADMIN_EMAIL) {
+                        setCurrentView('admin');
+                    } else {
+                        setCurrentView('dashboard');
+                    }
+                }
             }
         } catch (e) {
             console.error("Auth init failed", e);
@@ -41,12 +58,16 @@ const App: React.FC = () => {
   }, []);
 
   const handleLoginSuccess = (email: string, name?: string) => {
-      // Reload fresh data from DB to ensure correct state
+      // Reload fresh data from DB
       setIsLoadingAuth(true);
       authService.getCurrentSession().then(freshUser => {
           if (freshUser) {
               setUser(freshUser);
-              setCurrentView('dashboard');
+              if (freshUser.email === ADMIN_EMAIL) {
+                  setCurrentView('admin');
+              } else {
+                  setCurrentView('dashboard');
+              }
           }
           setIsLoadingAuth(false);
       });
@@ -124,8 +145,17 @@ const App: React.FC = () => {
       );
   }
 
+  // Admin Check
+  if (currentView === 'admin') {
+      if (user?.email !== ADMIN_EMAIL) {
+          // Fallback if not actually admin
+          setCurrentView('dashboard');
+          return null;
+      }
+      return <AdminPanel onLogout={handleLogout} plans={plans} onUpdatePlans={setPlans} />;
+  }
+
   // Router Logic
-  // If not logged in and trying to access protected views
   if (!user && currentView !== 'landing' && currentView !== 'auth') {
       return <Auth 
           onLoginSuccess={handleLoginSuccess} 
@@ -155,7 +185,7 @@ const App: React.FC = () => {
                  />;
       
       case 'pricing':
-          return <Pricing onSelectPlan={handleSelectPlan} onCancel={() => navigateTo('dashboard')} />;
+          return <Pricing plans={plans} onSelectPlan={handleSelectPlan} onCancel={() => navigateTo('dashboard')} />;
       
       case 'payment':
           if (!selectedPlan) {
