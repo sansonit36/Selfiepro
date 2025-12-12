@@ -71,9 +71,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
           await adminService.updateUserCredits(userId, newAmount);
           // Optimistic update
           setUsers(prev => prev.map(u => u.id === userId ? { ...u, credits: newAmount } : u));
-      } catch (e) {
+      } catch (e: any) {
           console.error(e);
-          alert("Failed to update credits. Check database policies.");
+          alert(`Failed to update credits. ${e.message}`);
       }
   };
 
@@ -170,9 +170,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
                                 <p className="text-sm text-red-700">
                                     {errorMsg}
                                 </p>
-                                {errorMsg.includes('relationship') || errorMsg.includes('policy') ? (
+                                {errorMsg.includes('relationship') || errorMsg.includes('policy') || errorMsg.includes('column') ? (
                                     <p className="text-xs text-red-600 mt-1">
-                                        👉 The database relationship is missing. Go to <strong>System Setup</strong> and run the updated script.
+                                        👉 The database structure is incomplete. Go to <strong>System Setup</strong> and run the updated script.
                                     </p>
                                 ) : null}
                             </div>
@@ -364,123 +364,31 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
                                     <h3 className="font-bold text-xl text-gray-900 mb-4">Complete Database Setup</h3>
                                     <p className="text-gray-600 mb-6">
                                         Run this script in the <strong>Supabase SQL Editor</strong>. <br/>
-                                        It fixes the "Relationship not found" error by explicitly linking the Transactions table to Users.
+                                        It fixes "Failed to update credits" by granting Admins full access.
                                     </p>
                                     
                                     <div className="bg-slate-900 rounded-xl p-4 overflow-x-auto mb-6 relative group">
                                         <button 
                                           onClick={() => {
                                             navigator.clipboard.writeText(`
--- 1. SETUP TABLES
-CREATE TABLE IF NOT EXISTS public.profiles (
-  id UUID REFERENCES auth.users(id) PRIMARY KEY,
-  full_name TEXT,
-  country TEXT,
-  credits INTEGER DEFAULT 0,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
-);
-
-CREATE TABLE IF NOT EXISTS public.transactions (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID NOT NULL, -- Constraint added below to be safe
-  transaction_id TEXT NOT NULL,
-  sender_name TEXT,
-  timestamp TEXT,
-  amount INTEGER,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
-);
-
-CREATE TABLE IF NOT EXISTS public.generations (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID REFERENCES public.profiles(id) NOT NULL,
-  image_url TEXT,
-  template TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
-);
-
--- 2. FORCE FOREIGN KEY RELATIONSHIPS
--- This block fixes the "Relationship not found" error if table existed previously without the link
+-- 1. ADD MISSING COLUMNS
 DO $$
 BEGIN
-  -- Drop constraint if it exists with a different name or old definition
-  IF EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'transactions_user_id_fkey') THEN
-    ALTER TABLE public.transactions DROP CONSTRAINT transactions_user_id_fkey;
-  END IF;
-
-  -- Add the constraint explicitly
-  ALTER TABLE public.transactions 
-  ADD CONSTRAINT transactions_user_id_fkey 
-  FOREIGN KEY (user_id) 
-  REFERENCES public.profiles(id);
-EXCEPTION
-  WHEN others THEN NULL; -- Ignore if it already exists in a way we cant detect
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'created_at') THEN
+        ALTER TABLE public.profiles ADD COLUMN created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now());
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'credits') THEN
+        ALTER TABLE public.profiles ADD COLUMN credits INTEGER DEFAULT 0;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'country') THEN
+        ALTER TABLE public.profiles ADD COLUMN country TEXT;
+    END IF;
 END $$;
 
-
--- 3. ENABLE RLS
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.generations ENABLE ROW LEVEL SECURITY;
-
--- 4. CLEANUP OLD POLICIES
-DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON profiles;
-DROP POLICY IF EXISTS "Users can insert their own profile" ON profiles;
-DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
-DROP POLICY IF EXISTS "Enable read access for admin" ON profiles;
-DROP POLICY IF EXISTS "Enable update access for admin" ON profiles;
-DROP POLICY IF EXISTS "Users can view own transactions" ON transactions;
-DROP POLICY IF EXISTS "Users can insert own transactions" ON transactions;
-DROP POLICY IF EXISTS "Enable read access for admin" ON transactions;
-DROP POLICY IF EXISTS "Users can view own generations" ON generations;
-DROP POLICY IF EXISTS "Users can insert own generations" ON generations;
-DROP POLICY IF EXISTS "Admin sees all profiles" ON profiles;
-DROP POLICY IF EXISTS "Admin updates all profiles" ON profiles;
-DROP POLICY IF EXISTS "Admin sees all transactions" ON transactions;
-
--- 5. CREATE ROBUST POLICIES
-
--- PROFILES
-CREATE POLICY "Users see own profile" ON profiles FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Users update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
-CREATE POLICY "Admin sees all profiles" ON profiles FOR SELECT USING (
-  (SELECT email FROM auth.users WHERE id = auth.uid()) = 'admin@selfiepro.com'
-);
-CREATE POLICY "Admin updates all profiles" ON profiles FOR UPDATE USING (
-  (SELECT email FROM auth.users WHERE id = auth.uid()) = 'admin@selfiepro.com'
-);
-CREATE POLICY "Users insert own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
-
-
--- TRANSACTIONS
-CREATE POLICY "Users see own transactions" ON transactions FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users insert own transactions" ON transactions FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Admin sees all transactions" ON transactions FOR SELECT USING (
-  (SELECT email FROM auth.users WHERE id = auth.uid()) = 'admin@selfiepro.com'
-);
-
--- GENERATIONS
-CREATE POLICY "Users see own generations" ON generations FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users insert own generations" ON generations FOR INSERT WITH CHECK (auth.uid() = user_id);
-`);
-                                            alert("SQL Copied to Clipboard!");
-                                          }}
-                                          className="absolute top-4 right-4 bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                                        >
-                                          Copy SQL
-                                        </button>
-                                        <code className="text-xs text-green-400 font-mono whitespace-pre block">
-{`-- 1. SETUP TABLES
-CREATE TABLE IF NOT EXISTS public.profiles (
-  id UUID REFERENCES auth.users(id) PRIMARY KEY,
-  full_name TEXT,
-  country TEXT,
-  credits INTEGER DEFAULT 0,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
-);
-
+-- 2. SETUP TABLES
 CREATE TABLE IF NOT EXISTS public.transactions (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID NOT NULL, -- We explicitly add FK below
+  user_id UUID NOT NULL,
   transaction_id TEXT NOT NULL,
   sender_name TEXT,
   timestamp TEXT,
@@ -496,7 +404,7 @@ CREATE TABLE IF NOT EXISTS public.generations (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- 2. FORCE FOREIGN KEY RELATIONSHIPS
+-- 3. FORCE FOREIGN KEY RELATIONSHIPS
 DO $$
 BEGIN
   ALTER TABLE public.transactions DROP CONSTRAINT IF EXISTS transactions_user_id_fkey;
@@ -507,24 +415,88 @@ BEGIN
 EXCEPTION WHEN others THEN NULL;
 END $$;
 
--- 3. ENABLE RLS & CLEANUP
+-- 4. ENABLE RLS
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.generations ENABLE ROW LEVEL SECURITY;
 
--- 4. POLICIES (Admin Access)
+-- 5. AGGRESSIVE CLEANUP OF OLD POLICIES
+DROP POLICY IF EXISTS "Users see own profile" ON profiles;
+DROP POLICY IF EXISTS "Users update own profile" ON profiles;
 DROP POLICY IF EXISTS "Admin sees all profiles" ON profiles;
+DROP POLICY IF EXISTS "Admin updates all profiles" ON profiles;
+DROP POLICY IF EXISTS "Users insert own profile" ON profiles;
+DROP POLICY IF EXISTS "Admin Full Access Profiles" ON profiles;
+DROP POLICY IF EXISTS "Users view own profiles" ON profiles;
+DROP POLICY IF EXISTS "Users update own profiles" ON profiles;
+DROP POLICY IF EXISTS "Users insert own profiles" ON profiles;
+
+DROP POLICY IF EXISTS "Users see own transactions" ON transactions;
+DROP POLICY IF EXISTS "Users insert own transactions" ON transactions;
 DROP POLICY IF EXISTS "Admin sees all transactions" ON transactions;
+DROP POLICY IF EXISTS "Admin Full Access Transactions" ON transactions;
+DROP POLICY IF EXISTS "Users view own transactions" ON transactions;
+DROP POLICY IF EXISTS "Users insert own transactions" ON transactions;
 
-CREATE POLICY "Admin sees all profiles" ON profiles FOR SELECT USING (
-  (SELECT email FROM auth.users WHERE id = auth.uid()) = 'admin@selfiepro.com'
+DROP POLICY IF EXISTS "Users see own generations" ON generations;
+DROP POLICY IF EXISTS "Users insert own generations" ON generations;
+DROP POLICY IF EXISTS "Admin Full Access Generations" ON generations;
+DROP POLICY IF EXISTS "Users view own generations" ON generations;
+DROP POLICY IF EXISTS "Users insert own generations" ON generations;
+
+-- 6. CREATE ROBUST POLICIES
+
+-- ADMIN: FULL ACCESS (ALL OPERATIONS)
+CREATE POLICY "Admin Full Access Profiles" ON profiles FOR ALL USING (
+  lower(auth.jwt() ->> 'email') = 'admin@selfiepro.com'
 );
 
-CREATE POLICY "Admin sees all transactions" ON transactions FOR SELECT USING (
-  (SELECT email FROM auth.users WHERE id = auth.uid()) = 'admin@selfiepro.com'
+CREATE POLICY "Admin Full Access Transactions" ON transactions FOR ALL USING (
+  lower(auth.jwt() ->> 'email') = 'admin@selfiepro.com'
 );
 
--- (See full script in the button above for other policies)`}
+CREATE POLICY "Admin Full Access Generations" ON generations FOR ALL USING (
+  lower(auth.jwt() ->> 'email') = 'admin@selfiepro.com'
+);
+
+-- USERS: OWN DATA ONLY
+CREATE POLICY "Users view own profiles" ON profiles FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Users update own profiles" ON profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users insert own profiles" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "Users view own transactions" ON transactions FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users insert own transactions" ON transactions FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users view own generations" ON generations FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users insert own generations" ON generations FOR INSERT WITH CHECK (auth.uid() = user_id);
+`);
+                                            alert("SQL Copied to Clipboard!");
+                                          }}
+                                          className="absolute top-4 right-4 bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-1.5 rounded-lg opacity-100 transition-opacity"
+                                        >
+                                          Copy SQL
+                                        </button>
+                                        <code className="text-xs text-green-400 font-mono whitespace-pre block">
+{`-- ... (Table Setup) ...
+
+-- 5. CLEANUP OLD POLICIES
+DROP POLICY IF EXISTS "Users see own profile" ON profiles;
+DROP POLICY IF EXISTS "Admin updates all profiles" ON profiles;
+-- ... (Drops all previous attempts)
+
+-- 6. CREATE ROBUST POLICIES
+
+-- ADMIN (Master Access)
+CREATE POLICY "Admin Full Access Profiles" ON profiles FOR ALL USING (
+  lower(auth.jwt() ->> 'email') = 'admin@selfiepro.com'
+);
+
+-- USERS (Own Data Only)
+CREATE POLICY "Users view own profiles" ON profiles FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Users update own profiles" ON profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users insert own profiles" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+
+-- (Repeated for Transactions & Generations)`}
                                         </code>
                                     </div>
                                     
