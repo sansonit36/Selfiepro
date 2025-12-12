@@ -277,25 +277,31 @@ export const dbService = {
 };
 
 export const adminService = {
-    // Note: These queries will only work if RLS Policies on Supabase allow the 'admin' user to read all rows
     getAllUsers: async (): Promise<UserProfile[]> => {
         const { data, error } = await supabase
             .from('profiles')
             .select('*')
             .order('created_at', { ascending: false });
         
-        if (error) throw error;
+        if (error) {
+            console.error("Error fetching ALL users:", error);
+            throw new Error(`Failed to fetch users: ${error.message}`);
+        }
         return data as UserProfile[];
     },
 
     getAllTransactions: async (): Promise<Transaction[]> => {
+        // We join with profiles to get the user name
         const { data, error } = await supabase
             .from('transactions')
             .select('*, profiles(full_name)')
             .order('created_at', { ascending: false });
 
-        if (error) throw error;
-        // Flatten the joined profile name if needed, but for now return as is
+        if (error) {
+            console.error("Error fetching ALL transactions:", error);
+            throw new Error(`Failed to fetch transactions: ${error.message}`);
+        }
+        
         return data as unknown as Transaction[];
     },
 
@@ -305,6 +311,9 @@ export const adminService = {
             .update({ credits: newCredits })
             .eq('id', userId);
         
-        if (error) throw error;
+        if (error) {
+            console.error("Error updating credits:", error);
+            throw new Error(`Failed to update credits: ${error.message}`);
+        }
     }
 };

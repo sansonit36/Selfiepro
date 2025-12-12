@@ -17,6 +17,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   
   // Stats
   const [stats, setStats] = useState({
@@ -31,6 +32,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
 
   const fetchData = async () => {
       setLoading(true);
+      setErrorMsg(null);
       try {
           const [usersData, txData] = await Promise.all([
               adminService.getAllUsers(),
@@ -47,9 +49,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
               totalRevenue: revenue
           });
 
-      } catch (e) {
+      } catch (e: any) {
           console.error("Admin fetch error", e);
-          // Don't alert here, as it might just be empty data on first load
+          setErrorMsg(e.message || "Failed to fetch data. Please check System Setup.");
       } finally {
           setLoading(false);
       }
@@ -156,6 +158,28 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
             </header>
 
             <main className="p-8">
+                {errorMsg && (
+                    <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4">
+                        <div className="flex">
+                            <div className="flex-shrink-0">
+                                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                </svg>
+                            </div>
+                            <div className="ml-3">
+                                <p className="text-sm text-red-700">
+                                    {errorMsg}
+                                </p>
+                                {errorMsg.includes('policy') || errorMsg.includes('permission') || errorMsg.includes('relation') ? (
+                                    <p className="text-xs text-red-600 mt-1">
+                                        👉 Go to the <strong>System Setup</strong> tab to fix database permissions.
+                                    </p>
+                                ) : null}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {loading ? (
                     <div className="flex items-center justify-center h-64">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
@@ -185,9 +209,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
                                     </div>
                                     {users.length <= 1 && (
                                         <div className="mt-4 p-3 bg-yellow-50 text-yellow-800 text-sm rounded-xl">
-                                            <strong>Note:</strong> You only see 1 user (yourself). If there are other users in the DB, 
-                                            you need to update Database Policies (RLS) to allow Admin viewing. 
-                                            Check the <strong>System Setup</strong> tab.
+                                            <strong>Note:</strong> You only see {users.length} user(s). If there should be more, please verify the <strong>System Setup</strong> policies are applied.
                                         </div>
                                     )}
                                 </div>
@@ -277,14 +299,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
-                                        {filteredTransactions.map(tx => (
-                                            <tr key={tx.id} className="hover:bg-gray-50">
-                                                <td className="px-6 py-4 font-mono font-medium">{tx.transaction_id}</td>
-                                                <td className="px-6 py-4">{tx.sender_name}</td>
-                                                <td className="px-6 py-4 text-green-600 font-bold">Rs. {tx.amount}</td>
-                                                <td className="px-6 py-4 text-gray-500">{new Date(tx.created_at).toLocaleString()}</td>
-                                            </tr>
-                                        ))}
+                                        {filteredTransactions.length === 0 ? (
+                                            <tr><td colSpan={4} className="px-6 py-4 text-center text-gray-500">No transactions found.</td></tr>
+                                        ) : (
+                                            filteredTransactions.map(tx => (
+                                                <tr key={tx.id} className="hover:bg-gray-50">
+                                                    <td className="px-6 py-4 font-mono font-medium">{tx.transaction_id}</td>
+                                                    <td className="px-6 py-4">{tx.sender_name}</td>
+                                                    <td className="px-6 py-4 text-green-600 font-bold">Rs. {tx.amount}</td>
+                                                    <td className="px-6 py-4 text-gray-500">{new Date(tx.created_at).toLocaleString()}</td>
+                                                </tr>
+                                            ))
+                                        )}
                                     </tbody>
                                 </table>
                             </div>
@@ -335,41 +361,181 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
                         {activeTab === 'setup' && (
                             <div className="max-w-4xl">
                                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                                    <h3 className="font-bold text-xl text-gray-900 mb-4">Database Permissions (RLS)</h3>
-                                    <p className="text-gray-600 mb-4">
-                                        By default, Supabase protects user data so users can only see their own profiles. 
-                                        For the Admin Panel to work, you need to run the following SQL commands in your Supabase Dashboard SQL Editor.
+                                    <h3 className="font-bold text-xl text-gray-900 mb-4">Complete Database Setup</h3>
+                                    <p className="text-gray-600 mb-6">
+                                        Run the script below in the <strong>Supabase SQL Editor</strong>. This script is safe to run multiple times.
+                                        It ensures all tables (`profiles`, `transactions`, `generations`) exist, links them correctly, and gives the Admin full access.
                                     </p>
                                     
-                                    <div className="bg-slate-900 rounded-xl p-4 overflow-x-auto mb-6">
-                                        <code className="text-sm text-green-400 font-mono whitespace-pre">
-{`-- 1. Enable Admin Read Access for Profiles
-CREATE POLICY "Enable read access for admin" 
-ON profiles 
-FOR SELECT 
-USING (auth.jwt() ->> 'email' = 'admin@selfiepro.com');
+                                    <div className="bg-slate-900 rounded-xl p-4 overflow-x-auto mb-6 relative group">
+                                        <button 
+                                          onClick={() => {
+                                            navigator.clipboard.writeText(`
+-- 1. SETUP TABLES
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id UUID REFERENCES auth.users(id) PRIMARY KEY,
+  full_name TEXT,
+  country TEXT,
+  credits INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
 
--- 2. Enable Admin Read Access for Transactions
-CREATE POLICY "Enable read access for admin" 
-ON transactions 
-FOR SELECT 
-USING (auth.jwt() ->> 'email' = 'admin@selfiepro.com');
+CREATE TABLE IF NOT EXISTS public.transactions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES public.profiles(id) NOT NULL,
+  transaction_id TEXT NOT NULL,
+  sender_name TEXT,
+  timestamp TEXT,
+  amount INTEGER,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
 
--- 3. Enable Admin Update Access for Credits
-CREATE POLICY "Enable update access for admin" 
-ON profiles 
-FOR UPDATE 
-USING (auth.jwt() ->> 'email' = 'admin@selfiepro.com');`}
+CREATE TABLE IF NOT EXISTS public.generations (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES public.profiles(id) NOT NULL,
+  image_url TEXT,
+  template TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- 2. ENABLE RLS
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.generations ENABLE ROW LEVEL SECURITY;
+
+-- 3. DROP OLD POLICIES TO PREVENT CONFLICTS
+DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON profiles;
+DROP POLICY IF EXISTS "Users can insert their own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
+DROP POLICY IF EXISTS "Enable read access for admin" ON profiles;
+DROP POLICY IF EXISTS "Enable update access for admin" ON profiles;
+DROP POLICY IF EXISTS "Users can view own transactions" ON transactions;
+DROP POLICY IF EXISTS "Users can insert own transactions" ON transactions;
+DROP POLICY IF EXISTS "Enable read access for admin" ON transactions;
+DROP POLICY IF EXISTS "Users can view own generations" ON generations;
+DROP POLICY IF EXISTS "Users can insert own generations" ON generations;
+
+-- 4. CREATE ROBUST POLICIES
+
+-- PROFILES
+-- Users can see own profile
+CREATE POLICY "Users see own profile" ON profiles FOR SELECT USING (auth.uid() = id);
+-- Users can update own profile
+CREATE POLICY "Users update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
+-- Admin can see ALL profiles
+CREATE POLICY "Admin sees all profiles" ON profiles FOR SELECT USING (
+  (SELECT email FROM auth.users WHERE id = auth.uid()) = 'admin@selfiepro.com'
+);
+-- Admin can update ALL profiles (credits)
+CREATE POLICY "Admin updates all profiles" ON profiles FOR UPDATE USING (
+  (SELECT email FROM auth.users WHERE id = auth.uid()) = 'admin@selfiepro.com'
+);
+-- Allow new users to insert their profile on signup
+CREATE POLICY "Users insert own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+
+
+-- TRANSACTIONS
+-- Users see own transactions
+CREATE POLICY "Users see own transactions" ON transactions FOR SELECT USING (auth.uid() = user_id);
+-- Users insert own transactions
+CREATE POLICY "Users insert own transactions" ON transactions FOR INSERT WITH CHECK (auth.uid() = user_id);
+-- Admin sees ALL transactions
+CREATE POLICY "Admin sees all transactions" ON transactions FOR SELECT USING (
+  (SELECT email FROM auth.users WHERE id = auth.uid()) = 'admin@selfiepro.com'
+);
+
+-- GENERATIONS
+-- Users see own generations
+CREATE POLICY "Users see own generations" ON generations FOR SELECT USING (auth.uid() = user_id);
+-- Users insert own generations
+CREATE POLICY "Users insert own generations" ON generations FOR INSERT WITH CHECK (auth.uid() = user_id);
+`);
+                                            alert("SQL Copied to Clipboard!");
+                                          }}
+                                          className="absolute top-4 right-4 bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                                        >
+                                          Copy SQL
+                                        </button>
+                                        <code className="text-xs text-green-400 font-mono whitespace-pre block">
+{`-- 1. SETUP TABLES
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id UUID REFERENCES auth.users(id) PRIMARY KEY,
+  full_name TEXT,
+  country TEXT,
+  credits INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+CREATE TABLE IF NOT EXISTS public.transactions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES public.profiles(id) NOT NULL,
+  transaction_id TEXT NOT NULL,
+  sender_name TEXT,
+  timestamp TEXT,
+  amount INTEGER,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+CREATE TABLE IF NOT EXISTS public.generations (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES public.profiles(id) NOT NULL,
+  image_url TEXT,
+  template TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- 2. ENABLE RLS
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.generations ENABLE ROW LEVEL SECURITY;
+
+-- 3. DROP OLD POLICIES TO PREVENT CONFLICTS
+DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON profiles;
+DROP POLICY IF EXISTS "Users can insert their own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
+DROP POLICY IF EXISTS "Enable read access for admin" ON profiles;
+DROP POLICY IF EXISTS "Enable update access for admin" ON profiles;
+DROP POLICY IF EXISTS "Users can view own transactions" ON transactions;
+DROP POLICY IF EXISTS "Users can insert own transactions" ON transactions;
+DROP POLICY IF EXISTS "Enable read access for admin" ON transactions;
+DROP POLICY IF EXISTS "Users can view own generations" ON generations;
+DROP POLICY IF EXISTS "Users can insert own generations" ON generations;
+
+-- 4. CREATE ROBUST POLICIES (Using explicit email sub-query for reliability)
+
+-- PROFILES
+CREATE POLICY "Users see own profile" ON profiles FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Users update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Admin sees all profiles" ON profiles FOR SELECT USING (
+  (SELECT email FROM auth.users WHERE id = auth.uid()) = 'admin@selfiepro.com'
+);
+CREATE POLICY "Admin updates all profiles" ON profiles FOR UPDATE USING (
+  (SELECT email FROM auth.users WHERE id = auth.uid()) = 'admin@selfiepro.com'
+);
+CREATE POLICY "Users insert own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+
+
+-- TRANSACTIONS
+CREATE POLICY "Users see own transactions" ON transactions FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users insert own transactions" ON transactions FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Admin sees all transactions" ON transactions FOR SELECT USING (
+  (SELECT email FROM auth.users WHERE id = auth.uid()) = 'admin@selfiepro.com'
+);
+
+-- GENERATIONS
+CREATE POLICY "Users see own generations" ON generations FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users insert own generations" ON generations FOR INSERT WITH CHECK (auth.uid() = user_id);`}
                                         </code>
                                     </div>
                                     
                                     <div className="bg-blue-50 text-blue-800 p-4 rounded-xl text-sm">
-                                        <strong>How to apply:</strong>
+                                        <strong>Instructions:</strong>
                                         <ol className="list-decimal ml-5 mt-2 space-y-1">
-                                            <li>Go to your Supabase Project Dashboard.</li>
-                                            <li>Click on "SQL Editor" in the left sidebar.</li>
+                                            <li>Go to your Supabase Dashboard &gt; SQL Editor.</li>
                                             <li>Click "New Query".</li>
-                                            <li>Paste the code above and click "Run".</li>
+                                            <li>Paste the code above.</li>
+                                            <li>Click "Run" in the bottom right.</li>
+                                            <li>Come back here and click "Refresh Data" on the Dashboard.</li>
                                         </ol>
                                     </div>
                                 </div>
