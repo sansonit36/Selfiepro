@@ -3,13 +3,12 @@ import Button from './Button';
 import ImageUploader from './ImageUploader';
 import { Plan, PaymentMethod, UploadedImage } from '../types';
 import { verifyPaymentReceipt, VerificationResult } from '../services/geminiService';
+import { dbService } from '../services/backend';
 
 interface PaymentProps {
   plan: Plan;
   onPaymentSuccess: (credits: number, details: VerificationResult) => void;
   onCancel: () => void;
-  // We now pass the full history record, not just IDs
-  transactionHistory: { id: string; sender: string; timestamp: string }[];
 }
 
 const PAYMENT_METHODS: PaymentMethod[] = [
@@ -18,7 +17,7 @@ const PAYMENT_METHODS: PaymentMethod[] = [
   { name: 'Nayapay', accountName: 'Husnain Ghani', accountNumber: '03184451469', color: 'bg-blue-600' }
 ];
 
-const Payment: React.FC<PaymentProps> = ({ plan, onPaymentSuccess, onCancel, transactionHistory }) => {
+const Payment: React.FC<PaymentProps> = ({ plan, onPaymentSuccess, onCancel }) => {
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | null>(null);
   const [receipt, setReceipt] = useState<UploadedImage | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -73,52 +72,44 @@ const Payment: React.FC<PaymentProps> = ({ plan, onPaymentSuccess, onCancel, tra
       setError(null);
 
       try {
+          // 1. AI Verification (Client Side)
           const result = await verifyPaymentReceipt(receipt, plan.price);
           
-          setIsVerifying(false);
-          
-          // 1. Basic Validation
           if (!result.verified) {
+              setIsVerifying(false);
               setError(`Verification failed: ${result.reason} (Confidence: ${result.confidence}%)`);
               return;
           }
 
-          // 2. Forensic Check (Did AI detect editing?)
           if (result.isEdited) {
+              setIsVerifying(false);
               setError("⚠️ Security Alert: We detected signs of digital editing on this receipt. Please upload the original, unedited screenshot.");
               return;
           }
 
-          // 3. Strict Duplicate Check
+          // 2. Duplicate Check (Server Side via Supabase)
           if (result.transactionId && result.transactionId !== "UNKNOWN") {
-              // Direct ID Match
-              const idMatch = transactionHistory.find(t => t.id === result.transactionId);
-              if (idMatch) {
-                  setError(`This Transaction ID (${result.transactionId}) has already been used.`);
-                  return;
-              }
-
-              // Metadata Collision Match (The "Smart" check)
-              // If ID is DIFFERENT, but Sender + Time + Date are EXACTLY the same, it's a fake/edit.
-              const metaMatch = transactionHistory.find(t => 
-                 t.timestamp !== "UNKNOWN" && 
-                 t.timestamp === result.timestamp && 
-                 t.sender !== "UNKNOWN" &&
-                 t.sender === result.senderName
+              const duplicateCheck = await dbService.checkDuplicateTransaction(
+                  result.transactionId, 
+                  result.senderName, 
+                  result.timestamp
               );
 
-              if (metaMatch) {
-                   setError(`⚠️ Duplicate Detected: A transaction with this exact timestamp and sender was already processed under a different ID. This receipt appears to be edited.`);
-                   return;
+              if (duplicateCheck.isDuplicate) {
+                  setIsVerifying(false);
+                  setError(`⚠️ ${duplicateCheck.reason}`);
+                  return;
               }
           }
 
+          setIsVerifying(false);
           // Success
           onPaymentSuccess(plan.credits, result);
           
       } catch (e: any) {
           setIsVerifying(false);
-          setError('System error during verification. Please try again or contact support.');
+          console.error(e);
+          setError(e.message || 'System error during verification. Please try again or contact support.');
       }
   };
 

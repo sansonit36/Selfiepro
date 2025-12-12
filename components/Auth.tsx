@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Button from './Button';
+import { authService } from '../services/backend';
 
 interface AuthProps {
   onLoginSuccess: (email: string, name?: string) => void;
@@ -9,30 +10,40 @@ interface AuthProps {
 
 const Auth: React.FC<AuthProps> = ({ onLoginSuccess, onNavigateBack, initialMode = 'login' }) => {
   const [isLogin, setIsLogin] = useState(initialMode === 'login');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  
-  // New fields for signup
   const [name, setName] = useState('');
-  const [country, setCountry] = useState('');
+  const [country, setCountry] = useState('Pakistan');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if(isLogin) {
-        // Login Logic
-        if(email && password) {
-            onLoginSuccess(email);
+    setError(null);
+    setIsLoading(true);
+
+    try {
+        if(isLogin) {
+            const user = await authService.login(email, password);
+            onLoginSuccess(user.email, user.name);
+        } else {
+            if (!name || !country) {
+                throw new Error("Please fill in all fields");
+            }
+            const user = await authService.signup(email, password, name, country);
+            onLoginSuccess(user.email, user.name);
         }
-    } else {
-        // Signup Logic
-        if(email && password && name && country) {
-            onLoginSuccess(email, name);
-        }
+    } catch (err: any) {
+        console.error(err);
+        setError(err.message || "Authentication failed");
+    } finally {
+        setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4 animate-fade-in">
       <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl border border-gray-100">
         <div className="text-center mb-8">
             <h2 className="text-3xl font-bold text-gray-900">{isLogin ? 'Welcome Back' : 'Join SelfiePro'}</h2>
@@ -40,6 +51,12 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, onNavigateBack, initialMode
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
+          {error && (
+            <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg font-medium text-center">
+                {error}
+            </div>
+          )}
+
           {/* Signup specific fields */}
           {!isLogin && (
             <>
@@ -62,7 +79,6 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, onNavigateBack, initialMode
                         value={country}
                         onChange={(e) => setCountry(e.target.value)}
                     >
-                        <option value="" disabled>Select your country</option>
                         <option value="Pakistan">Pakistan</option>
                         <option value="India">India</option>
                         <option value="USA">United States</option>
@@ -98,12 +114,21 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, onNavigateBack, initialMode
             />
           </div>
           
-          <Button type="submit" className="w-full">{isLogin ? 'Sign In' : 'Create Account'}</Button>
+          <Button type="submit" className="w-full" isLoading={isLoading}>
+              {isLogin ? 'Sign In' : 'Create Account'}
+          </Button>
         </form>
         
         <div className="mt-6 text-center text-sm text-gray-600">
             {isLogin ? "Don't have an account? " : "Already have an account? "}
-            <button onClick={() => setIsLogin(!isLogin)} className="font-semibold text-indigo-600 hover:text-indigo-500">
+            <button 
+                type="button"
+                onClick={() => {
+                    setIsLogin(!isLogin);
+                    setError(null);
+                }} 
+                className="font-semibold text-indigo-600 hover:text-indigo-500"
+            >
                 {isLogin ? 'Sign Up' : 'Log In'}
             </button>
         </div>

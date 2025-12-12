@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import LandingPage from './components/LandingPage';
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
@@ -7,48 +7,54 @@ import Payment from './components/Payment';
 import ThankYou from './components/ThankYou';
 import { User, Plan } from './types';
 import { VerificationResult } from './services/geminiService';
+import { authService, dbService } from './services/backend';
 
 type View = 'landing' | 'auth' | 'dashboard' | 'pricing' | 'payment' | 'thankyou';
-
-// Store more details to detect sophisticated fraud
-interface TransactionRecord {
-    id: string;
-    sender: string;
-    timestamp: string;
-}
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>('landing');
   const [authInitialMode, setAuthInitialMode] = useState<'login' | 'signup'>('login');
   
-  // Track used transactions with metadata
-  const [transactionHistory, setTransactionHistory] = useState<TransactionRecord[]>([]);
-  
-  // Track last purchase for Thank You page
-  const [lastPurchasedCredits, setLastPurchasedCredits] = useState(0);
-  
-  // Mock User State
-  const [user, setUser] = useState<User>({
-      name: 'User',
-      email: '',
-      isLoggedIn: false,
-      credits: 0
-  });
+  // Auth state is now nullable to represent "loading" state
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
 
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
+  const [lastPurchasedCredits, setLastPurchasedCredits] = useState(0);
 
-  const handleLogin = (email: string, name?: string) => {
-      setUser({ 
-        ...user, 
-        email, 
-        isLoggedIn: true, 
-        name: name || email.split('@')[0] 
+  // Initialize Auth from Supabase
+  useEffect(() => {
+    const initAuth = async () => {
+        try {
+            const sessionUser = await authService.getCurrentSession();
+            if (sessionUser) {
+                setUser(sessionUser);
+                if (currentView === 'landing') setCurrentView('dashboard');
+            }
+        } catch (e) {
+            console.error("Auth init failed", e);
+        } finally {
+            setIsLoadingAuth(false);
+        }
+    };
+    initAuth();
+  }, []);
+
+  const handleLoginSuccess = (email: string, name?: string) => {
+      // Reload fresh data from DB to ensure correct state
+      setIsLoadingAuth(true);
+      authService.getCurrentSession().then(freshUser => {
+          if (freshUser) {
+              setUser(freshUser);
+              setCurrentView('dashboard');
+          }
+          setIsLoadingAuth(false);
       });
-      setCurrentView('dashboard');
   };
 
-  const handleLogout = () => {
-      setUser({ ...user, isLoggedIn: false });
+  const handleLogout = async () => {
+      await authService.logout();
+      setUser(null);
       setCurrentView('landing');
   };
 
@@ -71,31 +77,58 @@ const App: React.FC = () => {
       setCurrentView('payment');
   };
 
-  const handlePaymentSuccess = (creditsAdded: number, details: VerificationResult) => {
-      const newRecord: TransactionRecord = {
-          id: details.transactionId,
-          sender: details.senderName,
-          timestamp: details.timestamp
-      };
+  const handlePaymentSuccess = async (creditsAdded: number, details: VerificationResult) => {
+      if (!user) return;
 
-      // Add to history if it has valid data
-      if (details.transactionId !== "UNKNOWN") {
-          setTransactionHistory(prev => [...prev, newRecord]);
+      try {
+        // 1. Save Transaction to DB
+        if (details.transactionId !== "UNKNOWN") {
+            await dbService.saveTransaction({
+                id: details.transactionId,
+                sender: details.senderName,
+                timestamp: details.timestamp,
+                amount: selectedPlan?.price || 0
+            }, user.email);
+        }
+
+        // 2. Update Credits in DB
+        const newBalance = await dbService.addCredits(creditsAdded);
+        
+        // 3. Update Local State
+        setUser(prev => prev ? ({ ...prev, credits: newBalance }) : null);
+        
+        setLastPurchasedCredits(creditsAdded);
+        setCurrentView('thankyou');
+        setSelectedPlan(null);
+      } catch (e) {
+        alert("Payment recorded locally but failed to save to server. Please contact support.");
+        console.error(e);
       }
-      
-      setUser(prev => ({ ...prev, credits: prev.credits + creditsAdded }));
-      
-      // Set the credits for the thank you page and navigate there
-      setLastPurchasedCredits(creditsAdded);
-      setCurrentView('thankyou');
-      setSelectedPlan(null);
   };
 
+  const handleCreditsUsed = async (amount: number) => {
+      if (!user) return;
+      try {
+          const newBalance = await dbService.deductCredits(amount);
+          setUser(prev => prev ? ({ ...prev, credits: newBalance }) : null);
+      } catch (e) {
+          console.error("Failed to deduct credits", e);
+      }
+  };
+
+  if (isLoadingAuth) {
+      return (
+          <div className="min-h-screen flex items-center justify-center bg-slate-50">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600"></div>
+          </div>
+      );
+  }
+
   // Router Logic
-  if (!user.isLoggedIn && currentView !== 'landing' && currentView !== 'auth') {
-      // Protect routes
+  // If not logged in and trying to access protected views
+  if (!user && currentView !== 'landing' && currentView !== 'auth') {
       return <Auth 
-          onLoginSuccess={handleLogin} 
+          onLoginSuccess={handleLoginSuccess} 
           onNavigateBack={() => navigateTo('landing')} 
           initialMode="login"
       />;
@@ -107,17 +140,18 @@ const App: React.FC = () => {
       
       case 'auth':
           return <Auth 
-            onLoginSuccess={handleLogin} 
+            onLoginSuccess={handleLoginSuccess} 
             onNavigateBack={() => navigateTo('landing')} 
             initialMode={authInitialMode}
           />;
       
       case 'dashboard':
+          if (!user) return null;
           return <Dashboard 
                     user={user} 
                     onBuyCredits={() => navigateTo('pricing')} 
                     onLogout={handleLogout}
-                    onCreditsUsed={(amount) => setUser(prev => ({...prev, credits: prev.credits - amount}))}
+                    onCreditsUsed={handleCreditsUsed}
                  />;
       
       case 'pricing':
@@ -132,7 +166,6 @@ const App: React.FC = () => {
                     plan={selectedPlan} 
                     onPaymentSuccess={handlePaymentSuccess} 
                     onCancel={() => navigateTo('pricing')} 
-                    transactionHistory={transactionHistory}
                  />;
                  
       case 'thankyou':

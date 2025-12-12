@@ -46,3 +46,18 @@ export interface PaymentMethod {
   accountNumber: string;
   color: string;
 }
+
+export interface Generation {
+  id: string;
+  image_url: string;
+  template: string;
+  created_at: string;
+}
+
+export interface Transaction {
+  id: string; // Internal DB UUID
+  transaction_id: string; // Receipt ID (e.g. TID123456)
+  amount: number;
+  created_at: string;
+  sender_name: string;
+}

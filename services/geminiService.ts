@@ -12,42 +12,59 @@ export const generateSelfie = async (
 ): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-  // Define environment descriptions based on template
+  // Define environment descriptions with "Raw/Amateur" context descriptors
   const sceneDescriptions: Record<SceneTemplate, string> = {
-    'Pakistani House Event': 'a vibrant Pakistani home event (like a Dholki or family gathering), with colorful decor, warm lighting, perhaps some floral arrangements in the background.',
-    'Dhaba': 'a lively roadside Dhaba in Pakistan, with charpoys, tea cups, warm string lights, and a rustic outdoor evening atmosphere.',
-    'Rooftop': 'a trendy rooftop terrace at sunset/dusk with city lights blurring in the background, cool breeze vibe.',
-    'Street': 'a busy, colorful street market in Pakistan, with rickshaws or shop signs faintly visible in the bokeh background.',
-    'Mall': 'a modern, bright shopping mall with glass railings and store lights in the background.',
-    'New York': 'the busy streets of New York City, perhaps Times Square with blurred neon billboards or a classic NY street corner.',
-    'Switzerland': 'a breathtaking Swiss landscape with snow-capped mountains, green valleys, and bright natural daylight.',
-    'Movie Set': 'a busy film production set with heavy studio lights, cameras, boom mics visible in the background, possibly a green screen edge or a director chair.',
-    'Press Conference': 'a formal media event with microphones in the foreground, branded backdrops behind the subjects, and camera flashes going off.',
-    'Random Encounter': 'a casual, candid setting like an airport terminal, a coffee shop, or a sidewalk, looking like a genuine fan encounter.',
-    'Award Show': 'a glamorous red carpet event or awards venue with golden lighting, velvet ropes, and paparazzi flashes in the background.',
-    'Concert Backstage': 'a dimly lit backstage corridor or dressing room area with roadie cases, stage trusses, and pass laminates visible.'
+    'Pakistani House Event': 'a chaotic but happy Pakistani wedding/dholki event. Lighting is a mix of warm yellow decorative bulbs and harsh camera flash. Background has floral garlands (marigold).',
+    'Dhaba': 'a roadside Dhaba at night. Lighting is harsh fluorescent tube lights and warm tungsten bulbs. Background has steam, charpoys, and steel cups.',
+    'Rooftop': 'a windy rooftop at night. Direct flash photography style. Background is dark city bokeh with grain/noise.',
+    'Street': 'a busy street in Lahore or Karachi during the day. Harsh natural sunlight, hard shadows, realistic street dust/haze.',
+    'Mall': 'inside a bright shopping mall. Cool white fluorescent lighting. Reflections on glass behind.',
+    'New York': 'Times Square or NYC street. Ambient neon lighting reflecting on skin. Slightly grainy night shot.',
+    'Switzerland': 'Outdoor mountain sunlight. High contrast, sharp shadows, wind in hair. Authentic travel photo vibe.',
+    'Movie Set': 'Behind the scenes on a set. Lighting is messy, mix of studio lights and shadows. Industrial background.',
+    'Press Conference': 'Media wall background. Harsh, direct flash lighting on faces. High contrast.',
+    'Random Encounter': 'Inside a coffee shop or airport. Overhead ceiling lights. Casual, impromptu vibe.',
+    'Award Show': 'Red carpet event. Intense flash photography causing "red eye" effect or shiny skin. Dark background.',
+    'Concert Backstage': 'Dimly lit corridor. High ISO noise, grainy, low light environment with red/blue ambient hues.'
   };
 
   const sceneContext = sceneDescriptions[template] || sceneDescriptions['Pakistani House Event'];
 
   // Prepare prompt
   const promptText = `
-    Generate a hyper-realistic group selfie featuring the people from the provided reference images together.
+    Generate a photorealistic, raw, amateur photo from the perspective of a front-facing smartphone camera (Selfie POV).
     
-    Setting: The location is ${sceneContext}
+    Subject: The people from the reference images.
+    Setting: ${sceneContext}
 
     ${customInstructions ? `**USER CUSTOM INSTRUCTIONS**: ${customInstructions}` : ''}
     
-    Instructions:
-    1. **CRITICAL - IDENTITY PRESERVATION**: You must preserve the exact facial features, identity, ethnicity, and likeness of the people in the provided images. **DO NOT CHANGE THEIR FACES.** The person from the first image (user) must look exactly like the reference. The celebrities must look exactly like their reference photos. Do not "beautify" or alter facial structures.
-    2. Identify the person in the first image (the user).
-    3. Identify the celebrities in the subsequent images.
-    4. Create a single cohesive group selfie image featuring the user and the celebrities standing close together.
-    5. Style: "Pakistani style selfie" - warm skin tones, vibrant but natural colors, slightly high contrast, depth of field typical of a high-end smartphone front camera.
-    6. Camera Angle: The image is a Point of View (POV) shot from the front camera. **DO NOT show the phone or camera device.** The camera is invisible. Hands should be out of frame or gesturing naturally (e.g., peace sign, thumbs up) but NOT holding a visible phone.
-    7. Composition: Close-up group shot, heads close together, looking directly at the "lens".
+    --------------------------------------------------------------------------------
+    CRITICAL CONSTRAINT: NO VISIBLE PHONES OR CAMERAS
+    --------------------------------------------------------------------------------
+    1. The camera is INVISIBLE. It is the "eye" of the viewer.
+    2. DO NOT render the phone itself.
+    3. DO NOT render a mirror reflection showing a phone.
+    4. To prevent the "holding phone" look, make sure the user's hands are either:
+       - Doing a Peace Sign (V sign)
+       - Thumbs up
+       - Hugging the celebrity (arm around shoulder)
+       - Resting at their side (out of frame)
+    5. If a hand is raised, it MUST be empty and making a gesture.
+    --------------------------------------------------------------------------------
+
+    STYLE GUIDE (RAW & REALISTIC):
+    - **Style**: "iPhone Front Camera" quality. The image must look like a real photo taken by a human, NOT digital art.
+    - **Imperfections**: Add digital noise, film grain, and slight JPEG artifacts. Skin texture must be visible (pores, slight unevenness). DO NOT airbrush or smooth the skin.
+    - **Lighting**: Use realistic, somewhat "messy" lighting. If indoors/night, simulate "Direct Flash" look (hard shadows behind the head, shiny skin highlights).
+    - **Composition**: Intimate, close-up, wide-angle distortion typical of front cameras.
     
-    Ensure extremely high fidelity to the faces provided. Blend lighting to match the '${template}' environment perfectly while keeping faces unchanged.
+    IDENTITY PRESERVATION:
+    - The first image provided is the USER (Selfie taker). They must be in the foreground, closest to the camera.
+    - The other images are CELEBRITIES. They should be right next to the user.
+    - You MUST preserve the exact facial identity of all subjects. Do not beautify them. Keep their natural features.
+
+    Final Output: A realistic, slightly imperfect, grainy social media photo.
   `;
 
   // Prepare parts
@@ -74,7 +91,7 @@ export const generateSelfie = async (
       config: {
         imageConfig: {
             aspectRatio: "3:4",
-            imageSize: "1K",
+            imageSize: "1K", // 1K often yields sharper, less 'AI-smoothed' textures than higher res for this specific model
         },
       },
     });
