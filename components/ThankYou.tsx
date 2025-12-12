@@ -1,22 +1,22 @@
 import React, { useEffect } from 'react';
 import Button from './Button';
+import { pixelService } from '../services/pixelService';
 
 interface ThankYouProps {
     creditsAdded: number;
+    transactionId: string;
+    amount: number;
     onContinue: () => void;
 }
 
-const ThankYou: React.FC<ThankYouProps> = ({ creditsAdded, onContinue }) => {
+const ThankYou: React.FC<ThankYouProps> = ({ creditsAdded, transactionId, amount, onContinue }) => {
     useEffect(() => {
-        // Simulate firing tracking pixels
-        console.log('--- TRACKING EVENT: PURCHASE ---');
-        console.log(`Value: ${creditsAdded} Credits`);
+        // Track the purchase via Pixel Service (handles duplication internally)
+        pixelService.trackPurchase(amount, 'PKR', transactionId);
         
-        // This is where you would integrate:
-        // window.fbq('track', 'Purchase', { value: creditsAdded, currency: 'USD' });
-        // window.gtag('event', 'purchase', { ... });
-        // window.ttq.track('CompletePayment', { ... });
-    }, [creditsAdded]);
+        console.log('--- PURCHASE COMPLETED ---');
+        console.log(`ID: ${transactionId}, Amount: ${amount}, Credits: ${creditsAdded}`);
+    }, [creditsAdded, transactionId, amount]);
 
     return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4 animate-fade-in">

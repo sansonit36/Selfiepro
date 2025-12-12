@@ -8,7 +8,8 @@ import ThankYou from './components/ThankYou';
 import AdminPanel from './components/AdminPanel';
 import { User, Plan } from './types';
 import { VerificationResult } from './services/geminiService';
-import { authService, dbService } from './services/backend';
+import { authService, dbService, adminService } from './services/backend';
+import { pixelService } from './services/pixelService';
 
 type View = 'landing' | 'auth' | 'dashboard' | 'pricing' | 'payment' | 'thankyou' | 'admin';
 
@@ -32,11 +33,14 @@ const App: React.FC = () => {
   const [plans, setPlans] = useState<Plan[]>(INITIAL_PLANS);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
   const [lastPurchasedCredits, setLastPurchasedCredits] = useState(0);
+  const [lastTransactionId, setLastTransactionId] = useState<string>('');
+  const [lastPurchaseAmount, setLastPurchaseAmount] = useState<number>(0);
 
-  // Initialize Auth from Supabase
+  // Initialize Data
   useEffect(() => {
-    const initAuth = async () => {
+    const init = async () => {
         try {
+            // 1. Auth Check
             const sessionUser = await authService.getCurrentSession();
             if (sessionUser) {
                 setUser(sessionUser);
@@ -48,13 +52,24 @@ const App: React.FC = () => {
                     }
                 }
             }
+
+            // 2. Load Plans from DB
+            const dbPlans = await dbService.getPlans();
+            if (dbPlans.length > 0) {
+                setPlans(dbPlans);
+            }
+
+            // 3. Load & Initialize Pixels
+            const settings = await adminService.getSettings();
+            pixelService.initialize(settings);
+
         } catch (e) {
-            console.error("Auth init failed", e);
+            console.error("Initialization failed", e);
         } finally {
             setIsLoadingAuth(false);
         }
     };
-    initAuth();
+    init();
   }, []);
 
   const handleLoginSuccess = (email: string, name?: string) => {
@@ -115,10 +130,13 @@ const App: React.FC = () => {
         // 2. Update Credits in DB
         const newBalance = await dbService.addCredits(creditsAdded);
         
-        // 3. Update Local State
+        // 3. Update Local State & Tracking Data
         setUser(prev => prev ? ({ ...prev, credits: newBalance }) : null);
         
         setLastPurchasedCredits(creditsAdded);
+        setLastTransactionId(details.transactionId !== "UNKNOWN" ? details.transactionId : `MANUAL-${Date.now()}`);
+        setLastPurchaseAmount(selectedPlan?.price || 0);
+
         setCurrentView('thankyou');
         setSelectedPlan(null);
       } catch (e) {
@@ -201,6 +219,8 @@ const App: React.FC = () => {
       case 'thankyou':
           return <ThankYou 
                     creditsAdded={lastPurchasedCredits} 
+                    transactionId={lastTransactionId}
+                    amount={lastPurchaseAmount}
                     onContinue={() => navigateTo('dashboard')}
                  />;
       

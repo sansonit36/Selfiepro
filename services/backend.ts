@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { User, Generation, Transaction, UserProfile } from '../types';
+import { User, Generation, Transaction, UserProfile, Plan, AppSettings } from '../types';
 
 export const authService = {
   signup: async (email: string, password: string, name: string, country: string): Promise<User> => {
@@ -196,6 +196,22 @@ export const dbService = {
     return newCredits;
   },
 
+  // --- PLANS ---
+  getPlans: async (): Promise<Plan[]> => {
+    // Public read access needed for this table
+    const { data, error } = await supabase
+      .from('plans')
+      .select('*')
+      .order('price', { ascending: true });
+
+    if (error) {
+      // If table doesn't exist yet, return empty (app will use INITIAL_PLANS)
+      console.warn("Could not fetch plans from DB (Table might be missing):", error.message);
+      return [];
+    }
+    return data as Plan[];
+  },
+
   // --- GALLERY FEATURES ---
 
   uploadGeneration: async (base64Data: string, template: string): Promise<Generation> => {
@@ -315,5 +331,48 @@ export const adminService = {
             console.error("Error updating credits:", error);
             throw new Error(`Failed to update credits: ${error.message}`);
         }
+    },
+
+    updatePlan: async (plan: Plan) => {
+        const { error } = await supabase
+            .from('plans')
+            .upsert({ 
+                id: plan.id, 
+                name: plan.name, 
+                price: plan.price, 
+                credits: plan.credits 
+            });
+        
+        if (error) {
+            console.error("Error updating plan:", error);
+            throw new Error(`Failed to update plan: ${error.message}`);
+        }
+    },
+
+    // --- SETTINGS (Pixels) ---
+    getSettings: async (): Promise<AppSettings> => {
+      const { data, error } = await supabase.from('settings').select('*');
+      
+      const settings: AppSettings = {
+        facebook_pixel_id: '',
+        tiktok_pixel_id: ''
+      };
+
+      if (data) {
+        data.forEach((row: any) => {
+          if (row.key === 'facebook_pixel_id') settings.facebook_pixel_id = row.value;
+          if (row.key === 'tiktok_pixel_id') settings.tiktok_pixel_id = row.value;
+        });
+      }
+
+      return settings;
+    },
+
+    updateSetting: async (key: string, value: string) => {
+      const { error } = await supabase
+        .from('settings')
+        .upsert({ key, value });
+      
+      if (error) throw new Error(error.message);
     }
 };

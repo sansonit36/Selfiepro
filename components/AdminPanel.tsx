@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserProfile, Transaction, Plan } from '../types';
+import { UserProfile, Transaction, Plan, AppSettings } from '../types';
 import { adminService, authService } from '../services/backend';
 import Button from './Button';
 
@@ -9,12 +9,13 @@ interface AdminPanelProps {
   onUpdatePlans: (plans: Plan[]) => void;
 }
 
-type Tab = 'dashboard' | 'users' | 'transactions' | 'pricing' | 'setup';
+type Tab = 'dashboard' | 'users' | 'transactions' | 'pricing' | 'settings' | 'setup';
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans }) => {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [settings, setSettings] = useState<AppSettings>({ facebook_pixel_id: '', tiktok_pixel_id: '' });
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -34,12 +35,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
       setLoading(true);
       setErrorMsg(null);
       try {
-          const [usersData, txData] = await Promise.all([
+          const [usersData, txData, settingsData] = await Promise.all([
               adminService.getAllUsers(),
-              adminService.getAllTransactions()
+              adminService.getAllTransactions(),
+              adminService.getSettings()
           ]);
           setUsers(usersData);
           setTransactions(txData);
+          setSettings(settingsData);
           
           // Calculate Stats
           const revenue = txData.reduce((acc, curr) => acc + (curr.amount || 0), 0);
@@ -77,7 +80,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
       }
   };
 
-  const handlePriceUpdate = (planId: string, field: 'price' | 'credits', value: string) => {
+  // Updates local state
+  const handlePriceChange = (planId: string, field: 'price' | 'credits', value: string) => {
       const numValue = parseInt(value);
       if (isNaN(numValue)) return;
       
@@ -85,6 +89,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
           p.id === planId ? { ...p, [field]: numValue } : p
       );
       onUpdatePlans(updatedPlans);
+  };
+
+  // Saves to DB (onBlur)
+  const handleSavePlan = async (plan: Plan) => {
+      try {
+          await adminService.updatePlan(plan);
+      } catch (e: any) {
+          console.error(e);
+          alert(`Failed to save plan: ${e.message}`);
+      }
+  };
+
+  const handleSaveSetting = async (key: string, value: string) => {
+      try {
+          await adminService.updateSetting(key, value);
+          setSettings(prev => ({ ...prev, [key]: value }));
+      } catch (e: any) {
+          alert(`Failed to save settings: ${e.message}`);
+      }
   };
 
   const filteredUsers = users.filter(u => 
@@ -130,6 +153,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
                     className={`w-full text-left px-4 py-3 rounded-xl transition-colors ${activeTab === 'pricing' ? 'bg-indigo-600' : 'hover:bg-slate-800'}`}
                 >
                     Edit Pricing
+                </button>
+                <button 
+                    onClick={() => setActiveTab('settings')} 
+                    className={`w-full text-left px-4 py-3 rounded-xl transition-colors ${activeTab === 'settings' ? 'bg-indigo-600' : 'hover:bg-slate-800'}`}
+                >
+                    Settings & Pixels
                 </button>
                 <button 
                     onClick={() => setActiveTab('setup')} 
@@ -319,9 +348,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
                         {/* PRICING */}
                         {activeTab === 'pricing' && (
                             <div className="max-w-4xl">
-                                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
-                                    <p className="text-sm text-yellow-700">
-                                        <strong>Note:</strong> Changes here are local to the application state. To persist these across server restarts, database integration for settings is required.
+                                <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-6">
+                                    <p className="text-sm text-green-700">
+                                        <strong>Live Editing:</strong> Changes are saved to the database immediately when you click outside the box.
                                     </p>
                                 </div>
                                 <div className="grid gap-6">
@@ -336,23 +365,92 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
                                                     <label className="block text-xs font-semibold text-gray-500 mb-1">Price (PKR)</label>
                                                     <input 
                                                         type="number" 
-                                                        className="border rounded px-3 py-2 w-32" 
+                                                        className="border rounded px-3 py-2 w-32 focus:ring-2 focus:ring-indigo-500 outline-none transition-shadow" 
                                                         value={plan.price}
-                                                        onChange={(e) => handlePriceUpdate(plan.id, 'price', e.target.value)}
+                                                        onChange={(e) => handlePriceChange(plan.id, 'price', e.target.value)}
+                                                        onBlur={() => handleSavePlan(plan)}
                                                     />
                                                 </div>
                                                 <div>
                                                     <label className="block text-xs font-semibold text-gray-500 mb-1">Credits</label>
                                                     <input 
                                                         type="number" 
-                                                        className="border rounded px-3 py-2 w-24" 
+                                                        className="border rounded px-3 py-2 w-24 focus:ring-2 focus:ring-indigo-500 outline-none transition-shadow" 
                                                         value={plan.credits}
-                                                        onChange={(e) => handlePriceUpdate(plan.id, 'credits', e.target.value)}
+                                                        onChange={(e) => handlePriceChange(plan.id, 'credits', e.target.value)}
+                                                        onBlur={() => handleSavePlan(plan)}
                                                     />
                                                 </div>
                                             </div>
                                         </div>
                                     ))}
+                                </div>
+                            </div>
+                        )}
+
+                         {/* SETTINGS (PIXELS) */}
+                         {activeTab === 'settings' && (
+                            <div className="max-w-4xl">
+                                <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+                                    <h3 className="font-bold text-xl text-gray-900 mb-6">Tracking Pixels</h3>
+                                    
+                                    <div className="space-y-6">
+                                        {/* Facebook */}
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                                Facebook Pixel ID
+                                            </label>
+                                            <div className="flex gap-3">
+                                                <input 
+                                                    type="text" 
+                                                    className="flex-1 border rounded-xl px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm"
+                                                    placeholder="e.g. 1234567890"
+                                                    value={settings.facebook_pixel_id}
+                                                    onChange={(e) => setSettings(prev => ({...prev, facebook_pixel_id: e.target.value}))}
+                                                />
+                                                <Button 
+                                                    onClick={() => handleSaveSetting('facebook_pixel_id', settings.facebook_pixel_id)}
+                                                    className="py-2 px-4 text-sm"
+                                                >
+                                                    Save
+                                                </Button>
+                                            </div>
+                                            <p className="text-xs text-gray-500 mt-2">
+                                                Automatically tracks 'Purchase' events on the Thank You page.
+                                            </p>
+                                        </div>
+
+                                        <div className="border-t border-gray-100"></div>
+
+                                        {/* TikTok */}
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                                TikTok Pixel ID
+                                            </label>
+                                            <div className="flex gap-3">
+                                                <input 
+                                                    type="text" 
+                                                    className="flex-1 border rounded-xl px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm"
+                                                    placeholder="e.g. C123ABC456"
+                                                    value={settings.tiktok_pixel_id}
+                                                    onChange={(e) => setSettings(prev => ({...prev, tiktok_pixel_id: e.target.value}))}
+                                                />
+                                                <Button 
+                                                    onClick={() => handleSaveSetting('tiktok_pixel_id', settings.tiktok_pixel_id)}
+                                                    className="py-2 px-4 text-sm"
+                                                >
+                                                    Save
+                                                </Button>
+                                            </div>
+                                            <p className="text-xs text-gray-500 mt-2">
+                                                Automatically tracks 'CompletePayment' events on the Thank You page.
+                                            </p>
+                                        </div>
+
+                                        <div className="bg-blue-50 p-4 rounded-xl text-sm text-blue-800 mt-4">
+                                            <strong>Note:</strong> Changes apply after refreshing the application.
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -364,7 +462,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
                                     <h3 className="font-bold text-xl text-gray-900 mb-4">Complete Database Setup</h3>
                                     <p className="text-gray-600 mb-6">
                                         Run this script in the <strong>Supabase SQL Editor</strong>. <br/>
-                                        It fixes "Failed to update credits" by granting Admins full access.
+                                        It creates tables for Plans, Settings, and updates Admin permissions.
                                     </p>
                                     
                                     <div className="bg-slate-900 rounded-xl p-4 overflow-x-auto mb-6 relative group">
@@ -404,6 +502,19 @@ CREATE TABLE IF NOT EXISTS public.generations (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
+CREATE TABLE IF NOT EXISTS public.plans (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  price INTEGER NOT NULL,
+  credits INTEGER NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+CREATE TABLE IF NOT EXISTS public.settings (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
+
 -- 3. FORCE FOREIGN KEY RELATIONSHIPS
 DO $$
 BEGIN
@@ -419,6 +530,8 @@ END $$;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.generations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 
 -- 5. AGGRESSIVE CLEANUP OF OLD POLICIES
 DROP POLICY IF EXISTS "Users see own profile" ON profiles;
@@ -444,6 +557,12 @@ DROP POLICY IF EXISTS "Admin Full Access Generations" ON generations;
 DROP POLICY IF EXISTS "Users view own generations" ON generations;
 DROP POLICY IF EXISTS "Users insert own generations" ON generations;
 
+DROP POLICY IF EXISTS "Public read plans" ON plans;
+DROP POLICY IF EXISTS "Admin update plans" ON plans;
+
+DROP POLICY IF EXISTS "Public read settings" ON settings;
+DROP POLICY IF EXISTS "Admin update settings" ON settings;
+
 -- 6. CREATE ROBUST POLICIES
 
 -- ADMIN: FULL ACCESS (ALL OPERATIONS)
@@ -459,6 +578,14 @@ CREATE POLICY "Admin Full Access Generations" ON generations FOR ALL USING (
   lower(auth.jwt() ->> 'email') = 'admin@selfiepro.com'
 );
 
+CREATE POLICY "Admin Full Access Plans" ON plans FOR ALL USING (
+  lower(auth.jwt() ->> 'email') = 'admin@selfiepro.com'
+);
+
+CREATE POLICY "Admin Full Access Settings" ON settings FOR ALL USING (
+  lower(auth.jwt() ->> 'email') = 'admin@selfiepro.com'
+);
+
 -- USERS: OWN DATA ONLY
 CREATE POLICY "Users view own profiles" ON profiles FOR SELECT USING (auth.uid() = id);
 CREATE POLICY "Users update own profiles" ON profiles FOR UPDATE USING (auth.uid() = id);
@@ -469,6 +596,18 @@ CREATE POLICY "Users insert own transactions" ON transactions FOR INSERT WITH CH
 
 CREATE POLICY "Users view own generations" ON generations FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Users insert own generations" ON generations FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- PUBLIC READ ACCESS (Plans & Settings)
+CREATE POLICY "Public read plans" ON plans FOR SELECT USING (true);
+CREATE POLICY "Public read settings" ON settings FOR SELECT USING (true);
+
+-- 7. SEED INITIAL DATA
+INSERT INTO public.plans (id, name, price, credits)
+VALUES 
+  ('basic', 'Starter', 599, 5),
+  ('standard', 'Popular', 699, 12),
+  ('pro', 'Pro', 999, 20)
+ON CONFLICT (id) DO NOTHING;
 `);
                                             alert("SQL Copied to Clipboard!");
                                           }}
@@ -477,26 +616,23 @@ CREATE POLICY "Users insert own generations" ON generations FOR INSERT WITH CHEC
                                           Copy SQL
                                         </button>
                                         <code className="text-xs text-green-400 font-mono whitespace-pre block">
-{`-- ... (Table Setup) ...
+{`-- ... (Tables) ...
 
--- 5. CLEANUP OLD POLICIES
-DROP POLICY IF EXISTS "Users see own profile" ON profiles;
-DROP POLICY IF EXISTS "Admin updates all profiles" ON profiles;
--- ... (Drops all previous attempts)
+CREATE TABLE IF NOT EXISTS public.settings (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
 
--- 6. CREATE ROBUST POLICIES
+-- 6. CREATE POLICIES
 
 -- ADMIN (Master Access)
-CREATE POLICY "Admin Full Access Profiles" ON profiles FOR ALL USING (
+CREATE POLICY "Admin Full Access Settings" ON settings FOR ALL USING (
   lower(auth.jwt() ->> 'email') = 'admin@selfiepro.com'
 );
 
--- USERS (Own Data Only)
-CREATE POLICY "Users view own profiles" ON profiles FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Users update own profiles" ON profiles FOR UPDATE USING (auth.uid() = id);
-CREATE POLICY "Users insert own profiles" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
-
--- (Repeated for Transactions & Generations)`}
+-- PUBLIC READ SETTINGS
+CREATE POLICY "Public read settings" ON settings FOR SELECT USING (true);
+`}
                                         </code>
                                     </div>
                                     
@@ -507,7 +643,7 @@ CREATE POLICY "Users insert own profiles" ON profiles FOR INSERT WITH CHECK (aut
                                             <li>Click "New Query".</li>
                                             <li>Paste the code above.</li>
                                             <li>Click "Run" in the bottom right.</li>
-                                            <li>Come back here and click "Refresh Data" on the Dashboard.</li>
+                                            <li>Come back here and click "Refresh Data".</li>
                                         </ol>
                                     </div>
                                 </div>

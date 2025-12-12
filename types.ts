@@ -71,3 +71,8 @@ export interface Transaction {
   sender_name: string;
   user_id?: string; // Optional for admin view
 }
+
+export interface AppSettings {
+  facebook_pixel_id: string;
+  tiktok_pixel_id: string;
+}
