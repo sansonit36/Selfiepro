@@ -170,9 +170,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
                                 <p className="text-sm text-red-700">
                                     {errorMsg}
                                 </p>
-                                {errorMsg.includes('policy') || errorMsg.includes('permission') || errorMsg.includes('relation') ? (
+                                {errorMsg.includes('relationship') || errorMsg.includes('policy') ? (
                                     <p className="text-xs text-red-600 mt-1">
-                                        👉 Go to the <strong>System Setup</strong> tab to fix database permissions.
+                                        👉 The database relationship is missing. Go to <strong>System Setup</strong> and run the updated script.
                                     </p>
                                 ) : null}
                             </div>
@@ -363,8 +363,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
                                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                                     <h3 className="font-bold text-xl text-gray-900 mb-4">Complete Database Setup</h3>
                                     <p className="text-gray-600 mb-6">
-                                        Run the script below in the <strong>Supabase SQL Editor</strong>. This script is safe to run multiple times.
-                                        It ensures all tables (`profiles`, `transactions`, `generations`) exist, links them correctly, and gives the Admin full access.
+                                        Run this script in the <strong>Supabase SQL Editor</strong>. <br/>
+                                        It fixes the "Relationship not found" error by explicitly linking the Transactions table to Users.
                                     </p>
                                     
                                     <div className="bg-slate-900 rounded-xl p-4 overflow-x-auto mb-6 relative group">
@@ -382,7 +382,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 
 CREATE TABLE IF NOT EXISTS public.transactions (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID REFERENCES public.profiles(id) NOT NULL,
+  user_id UUID NOT NULL, -- Constraint added below to be safe
   transaction_id TEXT NOT NULL,
   sender_name TEXT,
   timestamp TEXT,
@@ -398,12 +398,31 @@ CREATE TABLE IF NOT EXISTS public.generations (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- 2. ENABLE RLS
+-- 2. FORCE FOREIGN KEY RELATIONSHIPS
+-- This block fixes the "Relationship not found" error if table existed previously without the link
+DO $$
+BEGIN
+  -- Drop constraint if it exists with a different name or old definition
+  IF EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'transactions_user_id_fkey') THEN
+    ALTER TABLE public.transactions DROP CONSTRAINT transactions_user_id_fkey;
+  END IF;
+
+  -- Add the constraint explicitly
+  ALTER TABLE public.transactions 
+  ADD CONSTRAINT transactions_user_id_fkey 
+  FOREIGN KEY (user_id) 
+  REFERENCES public.profiles(id);
+EXCEPTION
+  WHEN others THEN NULL; -- Ignore if it already exists in a way we cant detect
+END $$;
+
+
+-- 3. ENABLE RLS
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.generations ENABLE ROW LEVEL SECURITY;
 
--- 3. DROP OLD POLICIES TO PREVENT CONFLICTS
+-- 4. CLEANUP OLD POLICIES
 DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON profiles;
 DROP POLICY IF EXISTS "Users can insert their own profile" ON profiles;
 DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
@@ -414,40 +433,33 @@ DROP POLICY IF EXISTS "Users can insert own transactions" ON transactions;
 DROP POLICY IF EXISTS "Enable read access for admin" ON transactions;
 DROP POLICY IF EXISTS "Users can view own generations" ON generations;
 DROP POLICY IF EXISTS "Users can insert own generations" ON generations;
+DROP POLICY IF EXISTS "Admin sees all profiles" ON profiles;
+DROP POLICY IF EXISTS "Admin updates all profiles" ON profiles;
+DROP POLICY IF EXISTS "Admin sees all transactions" ON transactions;
 
--- 4. CREATE ROBUST POLICIES
+-- 5. CREATE ROBUST POLICIES
 
 -- PROFILES
--- Users can see own profile
 CREATE POLICY "Users see own profile" ON profiles FOR SELECT USING (auth.uid() = id);
--- Users can update own profile
 CREATE POLICY "Users update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
--- Admin can see ALL profiles
 CREATE POLICY "Admin sees all profiles" ON profiles FOR SELECT USING (
   (SELECT email FROM auth.users WHERE id = auth.uid()) = 'admin@selfiepro.com'
 );
--- Admin can update ALL profiles (credits)
 CREATE POLICY "Admin updates all profiles" ON profiles FOR UPDATE USING (
   (SELECT email FROM auth.users WHERE id = auth.uid()) = 'admin@selfiepro.com'
 );
--- Allow new users to insert their profile on signup
 CREATE POLICY "Users insert own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
 
 
 -- TRANSACTIONS
--- Users see own transactions
 CREATE POLICY "Users see own transactions" ON transactions FOR SELECT USING (auth.uid() = user_id);
--- Users insert own transactions
 CREATE POLICY "Users insert own transactions" ON transactions FOR INSERT WITH CHECK (auth.uid() = user_id);
--- Admin sees ALL transactions
 CREATE POLICY "Admin sees all transactions" ON transactions FOR SELECT USING (
   (SELECT email FROM auth.users WHERE id = auth.uid()) = 'admin@selfiepro.com'
 );
 
 -- GENERATIONS
--- Users see own generations
 CREATE POLICY "Users see own generations" ON generations FOR SELECT USING (auth.uid() = user_id);
--- Users insert own generations
 CREATE POLICY "Users insert own generations" ON generations FOR INSERT WITH CHECK (auth.uid() = user_id);
 `);
                                             alert("SQL Copied to Clipboard!");
@@ -468,7 +480,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 
 CREATE TABLE IF NOT EXISTS public.transactions (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID REFERENCES public.profiles(id) NOT NULL,
+  user_id UUID NOT NULL, -- We explicitly add FK below
   transaction_id TEXT NOT NULL,
   sender_name TEXT,
   timestamp TEXT,
@@ -484,47 +496,35 @@ CREATE TABLE IF NOT EXISTS public.generations (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- 2. ENABLE RLS
+-- 2. FORCE FOREIGN KEY RELATIONSHIPS
+DO $$
+BEGIN
+  ALTER TABLE public.transactions DROP CONSTRAINT IF EXISTS transactions_user_id_fkey;
+  ALTER TABLE public.transactions 
+  ADD CONSTRAINT transactions_user_id_fkey 
+  FOREIGN KEY (user_id) 
+  REFERENCES public.profiles(id);
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+-- 3. ENABLE RLS & CLEANUP
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.generations ENABLE ROW LEVEL SECURITY;
 
--- 3. DROP OLD POLICIES TO PREVENT CONFLICTS
-DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON profiles;
-DROP POLICY IF EXISTS "Users can insert their own profile" ON profiles;
-DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
-DROP POLICY IF EXISTS "Enable read access for admin" ON profiles;
-DROP POLICY IF EXISTS "Enable update access for admin" ON profiles;
-DROP POLICY IF EXISTS "Users can view own transactions" ON transactions;
-DROP POLICY IF EXISTS "Users can insert own transactions" ON transactions;
-DROP POLICY IF EXISTS "Enable read access for admin" ON transactions;
-DROP POLICY IF EXISTS "Users can view own generations" ON generations;
-DROP POLICY IF EXISTS "Users can insert own generations" ON generations;
+-- 4. POLICIES (Admin Access)
+DROP POLICY IF EXISTS "Admin sees all profiles" ON profiles;
+DROP POLICY IF EXISTS "Admin sees all transactions" ON transactions;
 
--- 4. CREATE ROBUST POLICIES (Using explicit email sub-query for reliability)
-
--- PROFILES
-CREATE POLICY "Users see own profile" ON profiles FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Users update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
 CREATE POLICY "Admin sees all profiles" ON profiles FOR SELECT USING (
   (SELECT email FROM auth.users WHERE id = auth.uid()) = 'admin@selfiepro.com'
 );
-CREATE POLICY "Admin updates all profiles" ON profiles FOR UPDATE USING (
-  (SELECT email FROM auth.users WHERE id = auth.uid()) = 'admin@selfiepro.com'
-);
-CREATE POLICY "Users insert own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
 
-
--- TRANSACTIONS
-CREATE POLICY "Users see own transactions" ON transactions FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users insert own transactions" ON transactions FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Admin sees all transactions" ON transactions FOR SELECT USING (
   (SELECT email FROM auth.users WHERE id = auth.uid()) = 'admin@selfiepro.com'
 );
 
--- GENERATIONS
-CREATE POLICY "Users see own generations" ON generations FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users insert own generations" ON generations FOR INSERT WITH CHECK (auth.uid() = user_id);`}
+-- (See full script in the button above for other policies)`}
                                         </code>
                                     </div>
                                     
