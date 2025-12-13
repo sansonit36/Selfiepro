@@ -9,12 +9,13 @@ interface AdminPanelProps {
   onUpdatePlans: (plans: Plan[]) => void;
 }
 
-type Tab = 'dashboard' | 'users' | 'transactions' | 'pricing' | 'settings' | 'setup';
+type Tab = 'dashboard' | 'users' | 'generations' | 'transactions' | 'pricing' | 'settings' | 'setup';
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans }) => {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [generations, setGenerations] = useState<any[]>([]);
   const [settings, setSettings] = useState<AppSettings>({ facebook_pixel_id: '', tiktok_pixel_id: '' });
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -24,7 +25,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
   const [stats, setStats] = useState({
       totalUsers: 0,
       totalRevenue: 0,
-      totalTransactions: 0
+      totalTransactions: 0,
+      totalGenerations: 0
   });
 
   useEffect(() => {
@@ -35,21 +37,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
       setLoading(true);
       setErrorMsg(null);
       try {
-          const [usersData, txData, settingsData] = await Promise.all([
+          const [usersData, txData, settingsData, genData] = await Promise.all([
               adminService.getAllUsers(),
               adminService.getAllTransactions(),
-              adminService.getSettings()
+              adminService.getSettings(),
+              adminService.getAllGenerations()
           ]);
           setUsers(usersData);
           setTransactions(txData);
           setSettings(settingsData);
+          setGenerations(genData);
           
           // Calculate Stats
           const revenue = txData.reduce((acc, curr) => acc + (curr.amount || 0), 0);
           setStats({
               totalUsers: usersData.length,
               totalTransactions: txData.length,
-              totalRevenue: revenue
+              totalRevenue: revenue,
+              totalGenerations: genData.length
           });
 
       } catch (e: any) {
@@ -149,6 +154,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
                     Users & Credits
                 </button>
                 <button 
+                    onClick={() => setActiveTab('generations')} 
+                    className={`w-full text-left px-4 py-3 rounded-xl transition-colors ${activeTab === 'generations' ? 'bg-indigo-600' : 'hover:bg-slate-800'}`}
+                >
+                    Generations Feed
+                </button>
+                <button 
                     onClick={() => setActiveTab('transactions')} 
                     className={`w-full text-left px-4 py-3 rounded-xl transition-colors ${activeTab === 'transactions' ? 'bg-indigo-600' : 'hover:bg-slate-800'}`}
                 >
@@ -185,7 +196,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
         {/* Main Content */}
         <div className="flex-1 overflow-y-auto h-screen">
             <header className="bg-white shadow-sm h-16 flex items-center px-8 justify-between">
-                <h2 className="text-lg font-semibold text-gray-800 capitalize">{activeTab}</h2>
+                <h2 className="text-lg font-semibold text-gray-800 capitalize">{activeTab.replace('generations', 'Generations Feed')}</h2>
                 <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-green-500"></span>
                     <span className="text-sm text-gray-600">Admin Active</span>
@@ -223,7 +234,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
                     <>
                         {/* DASHBOARD */}
                         {activeTab === 'dashboard' && (
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                                     <h3 className="text-gray-500 text-sm font-medium">Total Users</h3>
                                     <p className="text-3xl font-bold text-gray-900 mt-2">{stats.totalUsers}</p>
@@ -235,6 +246,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
                                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                                     <h3 className="text-gray-500 text-sm font-medium">Verified Transactions</h3>
                                     <p className="text-3xl font-bold text-indigo-600 mt-2">{stats.totalTransactions}</p>
+                                </div>
+                                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                                    <h3 className="text-gray-500 text-sm font-medium">Total Creations</h3>
+                                    <p className="text-3xl font-bold text-purple-600 mt-2">{stats.totalGenerations}</p>
                                 </div>
                                 
                                 <div className="col-span-full bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
@@ -310,6 +325,41 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, plans, onUpdatePlans 
                                     </tbody>
                                 </table>
                             </div>
+                        )}
+
+                        {/* GENERATIONS FEED */}
+                        {activeTab === 'generations' && (
+                             <div className="space-y-4">
+                                <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-gray-100">
+                                    <h3 className="font-bold text-gray-800">Global Feed ({generations.length})</h3>
+                                    <Button onClick={() => fetchData()} variant="secondary" className="text-xs px-3 py-2">Refresh</Button>
+                                </div>
+                                {generations.length === 0 ? (
+                                    <div className="text-center py-12 text-gray-400">No generations found.</div>
+                                ) : (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                                        {generations.map(gen => (
+                                            <div key={gen.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-full">
+                                                <div className="aspect-[3/4] bg-gray-100 relative group overflow-hidden">
+                                                    <img src={gen.image_url} alt="Generated" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" loading="lazy" />
+                                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                        <a href={gen.image_url} target="_blank" rel="noreferrer" className="text-white bg-indigo-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">View Full Size</a>
+                                                    </div>
+                                                </div>
+                                                <div className="p-4 flex-1 flex flex-col justify-between">
+                                                    <div>
+                                                        <p className="font-bold text-gray-900 text-sm truncate" title={gen.profiles?.full_name}>{gen.profiles?.full_name || 'Unknown User'}</p>
+                                                        <p className="text-xs text-indigo-600 font-medium mt-0.5">{gen.template}</p>
+                                                    </div>
+                                                    <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between items-end">
+                                                        <p className="text-xs text-gray-400">{new Date(gen.created_at).toLocaleString()}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                             </div>
                         )}
 
                         {/* TRANSACTIONS */}

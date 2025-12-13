@@ -350,6 +350,20 @@ export const adminService = {
         return data as unknown as Transaction[];
     },
 
+    getAllGenerations: async (): Promise<any[]> => {
+        const { data, error } = await supabase
+            .from('generations')
+            .select('*, profiles(full_name)')
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error("Error fetching ALL generations:", error);
+            throw new Error(`Failed to fetch generations: ${error.message}`);
+        }
+        
+        return data as any[];
+    },
+
     updateUserCredits: async (userId: string, newCredits: number) => {
         const { error } = await supabase
             .from('profiles')
