@@ -571,9 +571,11 @@ DROP POLICY IF EXISTS "Users insert own generations" ON generations;
 
 DROP POLICY IF EXISTS "Public read plans" ON plans;
 DROP POLICY IF EXISTS "Admin update plans" ON plans;
+DROP POLICY IF EXISTS "Admin Full Access Plans" ON plans;
 
 DROP POLICY IF EXISTS "Public read settings" ON settings;
 DROP POLICY IF EXISTS "Admin update settings" ON settings;
+DROP POLICY IF EXISTS "Admin Full Access Settings" ON settings;
 
 -- 6. CREATE ROBUST POLICIES
 
