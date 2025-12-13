@@ -17,6 +17,7 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, onNavigateBack, initialMode
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [country, setCountry] = useState('Pakistan');
+  const [referralCode, setReferralCode] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,7 +50,7 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, onNavigateBack, initialMode
             if (!name || !country) {
                 throw new Error("Please fill in all fields");
             }
-            const user = await authService.signup(email, password, name, country);
+            const user = await authService.signup(email, password, name, country, referralCode);
             onLoginSuccess(user.email, user.name);
         }
     } catch (err: any) {
@@ -65,7 +66,12 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, onNavigateBack, initialMode
       <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl border border-gray-100">
         <div className="text-center mb-8">
             <h2 className="text-3xl font-bold text-gray-900">{isLogin ? 'Welcome Back' : 'Join SelfiePro'}</h2>
-            <p className="text-gray-500 mt-2">{isLogin ? 'Enter your details to access your account' : 'Start your journey to internet fame'}</p>
+            <p className="text-gray-500 mt-2">
+                {isLogin 
+                    ? 'Enter your details to access your account' 
+                    : <span className="text-indigo-600 font-medium">Get 1 Free Credit on Signup! ✨</span>
+                }
+            </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
@@ -131,6 +137,21 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, onNavigateBack, initialMode
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
+          
+          {!isLogin && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Referral Code (Optional)</label>
+                <input 
+                  type="text" 
+                  className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all uppercase font-mono tracking-wider placeholder:normal-case placeholder:font-sans placeholder:tracking-normal"
+                  placeholder="e.g. FRIEND123"
+                  value={referralCode}
+                  onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                  maxLength={10}
+                />
+                <p className="text-xs text-gray-500 mt-1">Enter a friend's code to gift them a credit!</p>
+              </div>
+          )}
           
           <Button type="submit" className="w-full" isLoading={isLoading}>
               {isLogin ? 'Sign In' : 'Create Account'}

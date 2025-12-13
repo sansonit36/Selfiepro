@@ -77,6 +77,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onBuyCredits, onLogout, onC
       }
   };
 
+  const copyReferralCode = () => {
+      if (user.referralCode) {
+          navigator.clipboard.writeText(user.referralCode);
+          alert("Code copied to clipboard!");
+      }
+  };
+
   const processFile = (file: File): Promise<UploadedImage> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -126,7 +133,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onBuyCredits, onLogout, onC
 
   const handleGenerate = async () => {
     if (user.credits <= 0) {
-        setState(prev => ({ ...prev, error: "Insufficient credits. Please top up." }));
+        setState(prev => ({ ...prev, error: "Insufficient credits. Please top up or invite friends." }));
         return;
     }
     if (!userImage) {
@@ -297,6 +304,30 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onBuyCredits, onLogout, onC
                 </Button>
               </div>
             </div>
+
+            {/* Refer & Earn Card */}
+            <div className="bg-gradient-to-br from-purple-600 to-indigo-700 p-6 rounded-3xl shadow-lg text-white relative overflow-hidden">
+                <div className="absolute top-0 right-0 -mr-10 -mt-10 w-32 h-32 bg-white opacity-10 rounded-full"></div>
+                
+                <h3 className="text-xl font-bold mb-2">Invite Friends, Get Free Credits! 🚀</h3>
+                <p className="text-indigo-100 text-sm mb-4">
+                    Share your code. For every 5 friends that join, you get 5 credits! (1 Credit per friend).
+                </p>
+                
+                <div className="bg-white/10 backdrop-blur-md rounded-xl p-3 flex items-center justify-between border border-white/20">
+                    <div>
+                        <span className="text-xs text-indigo-200 block uppercase tracking-wider">Your Referral Code</span>
+                        <span className="text-xl font-mono font-bold tracking-widest">{user.referralCode || 'GENERATING...'}</span>
+                    </div>
+                    <button 
+                        onClick={copyReferralCode}
+                        className="bg-white text-indigo-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-50 transition-colors"
+                    >
+                        Copy
+                    </button>
+                </div>
+            </div>
+
           </div>
 
           {/* Right Column: Result */}

@@ -486,6 +486,13 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'country') THEN
         ALTER TABLE public.profiles ADD COLUMN country TEXT;
     END IF;
+    -- Referral Columns
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'referral_code') THEN
+        ALTER TABLE public.profiles ADD COLUMN referral_code TEXT UNIQUE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'referred_by') THEN
+        ALTER TABLE public.profiles ADD COLUMN referred_by TEXT;
+    END IF;
 END $$;
 
 -- 2. SETUP TABLES
@@ -623,20 +630,12 @@ ON CONFLICT (id) DO NOTHING;
                                         <code className="text-xs text-green-400 font-mono whitespace-pre block">
 {`-- ... (Tables) ...
 
-CREATE TABLE IF NOT EXISTS public.settings (
-  key TEXT PRIMARY KEY,
-  value TEXT
-);
+-- Referral Columns Added to profiles
+IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'referral_code') THEN
+    ALTER TABLE public.profiles ADD COLUMN referral_code TEXT UNIQUE;
+END IF;
 
--- 6. CREATE POLICIES
-
--- ADMIN (Master Access)
-CREATE POLICY "Admin Full Access Settings" ON settings FOR ALL USING (
-  lower(auth.jwt() ->> 'email') = 'admin@selfiepro.com'
-);
-
--- PUBLIC READ SETTINGS
-CREATE POLICY "Public read settings" ON settings FOR SELECT USING (true);
+-- ... (Policies) ...
 `}
                                         </code>
                                     </div>

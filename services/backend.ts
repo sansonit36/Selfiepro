@@ -2,7 +2,7 @@ import { supabase } from './supabaseClient';
 import { User, Generation, Transaction, UserProfile, Plan, AppSettings } from '../types';
 
 export const authService = {
-  signup: async (email: string, password: string, name: string, country: string): Promise<User> => {
+  signup: async (email: string, password: string, name: string, country: string, referralCodeInput?: string): Promise<User> => {
     // 1. Sign up with Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
@@ -12,7 +12,31 @@ export const authService = {
     if (authError) throw authError;
     if (!authData.user) throw new Error("Signup failed");
 
-    // 2. Create Profile
+    // 2. Generate Referral Code for new user
+    const myReferralCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const initialCredits = 1; // 1 Free Credit on Signup
+
+    // 3. Handle Referral Reward (If signed up via someone else)
+    let referredBy = null;
+    if (referralCodeInput && referralCodeInput.length > 0) {
+        // Find the referrer
+        const { data: referrer } = await supabase
+            .from('profiles')
+            .select('id, credits, referral_code')
+            .eq('referral_code', referralCodeInput)
+            .single();
+        
+        if (referrer) {
+            referredBy = referralCodeInput;
+            // Reward the referrer with +1 Credit
+            await supabase
+                .from('profiles')
+                .update({ credits: (referrer.credits || 0) + 1 })
+                .eq('id', referrer.id);
+        }
+    }
+
+    // 4. Create Profile
     const { error: profileError } = await supabase
       .from('profiles')
       .insert([
@@ -20,7 +44,9 @@ export const authService = {
           id: authData.user.id, 
           full_name: name, 
           country: country,
-          credits: 0 
+          credits: initialCredits,
+          referral_code: myReferralCode,
+          referred_by: referredBy
         }
       ]);
 
@@ -34,7 +60,8 @@ export const authService = {
       name,
       email,
       isLoggedIn: true,
-      credits: 0
+      credits: initialCredits,
+      referralCode: myReferralCode
     };
   },
 
@@ -61,7 +88,8 @@ export const authService = {
       name: profile.full_name,
       email: data.user.email || '',
       isLoggedIn: true,
-      credits: profile.credits
+      credits: profile.credits,
+      referralCode: profile.referral_code
     };
   },
 
@@ -86,7 +114,8 @@ export const authService = {
       name: profile.full_name,
       email: session.user.email || '',
       isLoggedIn: true,
-      credits: profile.credits
+      credits: profile.credits,
+      referralCode: profile.referral_code
     };
   }
 };

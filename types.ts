@@ -33,6 +33,7 @@ export interface User {
   email: string;
   isLoggedIn: boolean;
   credits: number;
+  referralCode?: string;
 }
 
 export interface UserProfile extends User {
@@ -40,6 +41,7 @@ export interface UserProfile extends User {
   full_name: string;
   created_at: string;
   country: string;
+  referral_code?: string;
 }
 
 export interface Plan {
