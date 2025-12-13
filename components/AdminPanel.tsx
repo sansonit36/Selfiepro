@@ -580,9 +580,17 @@ CREATE TABLE IF NOT EXISTS public.settings (
 -- 3. FORCE FOREIGN KEY RELATIONSHIPS
 DO $$
 BEGIN
+  -- Transactions FK
   ALTER TABLE public.transactions DROP CONSTRAINT IF EXISTS transactions_user_id_fkey;
   ALTER TABLE public.transactions 
   ADD CONSTRAINT transactions_user_id_fkey 
+  FOREIGN KEY (user_id) 
+  REFERENCES public.profiles(id);
+
+  -- Generations FK
+  ALTER TABLE public.generations DROP CONSTRAINT IF EXISTS generations_user_id_fkey;
+  ALTER TABLE public.generations 
+  ADD CONSTRAINT generations_user_id_fkey 
   FOREIGN KEY (user_id) 
   REFERENCES public.profiles(id);
 EXCEPTION WHEN others THEN NULL;
